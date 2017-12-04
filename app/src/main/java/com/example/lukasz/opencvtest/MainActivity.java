@@ -8,6 +8,7 @@ import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraManager;
 import android.os.Build;
+import android.support.annotation.IntRange;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -23,11 +24,21 @@ import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.PortraitCameraView;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
+import org.opencv.core.RotatedRect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.security.Policy;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2
 {
@@ -58,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     JavaCameraView javaCameraView;
 
     //Matrixes
-    Mat imgRGBA, imageGray, imageCanny;
+    Mat imgRGBA, imageGray, imageCanny, imageinRange, imageTMP;
 
     //Interface
     LinearLayout linearLayout;
@@ -70,8 +81,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     int counter = 0;
     int tresh1 = 50;
     int tresh2 = 150;
+    int erosion_size = 5;
+    int dilatation_size = 5;
     boolean isLight = false;
     boolean isb2 = false;
+
+    List<MatOfPoint> contours = new ArrayList<>();
+    Mat hierarchy = new Mat();
+    List<RotatedRect> minRect = new ArrayList<>(contours.size());
+    List<RotatedRect> minEllipse = new ArrayList<>(contours.size());
 
     BaseLoaderCallback loaderCallback = new BaseLoaderCallback(this)
     {
@@ -121,6 +139,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         b2.setVisibility(View.INVISIBLE);
         tv1.setVisibility(View.INVISIBLE);
         linearLayout.setVisibility(View.INVISIBLE);
+
 
         hasFlash = getApplicationContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
         if (!hasFlash)
@@ -205,6 +224,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         {
             turnOffFlashLight();
         }
+        imgRGBA.release();
+        imageGray.release();
+        imageCanny.release();
+        imageinRange.release();
+        imageTMP.release();
     }
 
     protected void onDestroy()
@@ -218,6 +242,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         {
             turnOffFlashLight();
         }
+        imgRGBA.release();
+        imageGray.release();
+        imageCanny.release();
+        imageinRange.release();
+        imageTMP.release();
     }
 
     protected void onResume()
@@ -244,6 +273,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         imgRGBA = new Mat(height, width, CvType.CV_8UC4);
         imageGray = new Mat(imgRGBA.size(), CvType.CV_8UC1);
         imageCanny = new Mat(imgRGBA.size(), CvType.CV_8UC1);
+        imageinRange = new Mat(imgRGBA.size(),CvType.CV_8UC1);
+        imageTMP = new Mat(imgRGBA.size(),CvType.CV_8UC1);
     }
 
     @Override
@@ -252,6 +283,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         imgRGBA.release();
         imageGray.release();
         imageCanny.release();
+        imageinRange.release();
+        imageTMP.release();
     }
 
     @Override
@@ -259,13 +292,30 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     {
         imgRGBA = inputFrame.rgba();
         Imgproc.cvtColor(imgRGBA, imageGray, Imgproc.COLOR_RGBA2GRAY);
-        Imgproc.Canny(imageGray, imageCanny, tresh1, tresh2);
+        Imgproc.Canny(imageGray, imageCanny, tresh1,tresh2);
+        Core.inRange(imageGray, new Scalar(tresh1, tresh1, tresh1), new Scalar(tresh2, tresh2, tresh2),imageinRange);
+        Mat element1 = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2*erosion_size + 1, 2*erosion_size+1));
+        Imgproc.erode(imageinRange,imageTMP,element1);
+        Mat element2 = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(2*dilatation_size + 1, 2*dilatation_size+1));
+        Imgproc.erode(imageTMP,imageTMP,element2);
+        Imgproc.findContours(imageTMP,contours,hierarchy,Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+        //for (int i = 0; i < contours.size(); i++)
+        //{
+       //     if (Imgproc.contourArea(contours(> 100))
+       //     minRect.set(i, Imgproc.minAreaRect((contours.get(i))));
+      //  }
         switch (counter)
         {
+            case 0:
+                return imgRGBA;
             case 1:
                 return imageGray;
             case 2:
                 return imageCanny;
+            case 3:
+                return imageinRange;
+            case 4:
+                return imageTMP;
             default:
                 return imgRGBA;
         }
@@ -284,11 +334,27 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 break;
             case 1:
                 counter = 2;
-                b1.setText("Change to RGBA");
+                b1.setText("Change to inRange");
                 b2.setVisibility(View.VISIBLE);
+                b2.setText("Show tresholds");
+                isb2 = false;
                 linearLayout.setVisibility(View.INVISIBLE);
                 break;
             case 2:
+                counter = 3;
+                b1.setText("Change to opened");
+                b2.setVisibility(View.VISIBLE);
+                b2.setText("Show scalars");
+                isb2 = false;
+                linearLayout.setVisibility(View.INVISIBLE);
+                break;
+            case 3:
+                counter = 4;
+                b2.setVisibility(View.INVISIBLE);
+                linearLayout.setVisibility(View.INVISIBLE);
+                b1.setText("Change RGB");
+                break;
+            case 4:
                 counter = 0;
                 b1.setText("Change to gray");
                 b2.setVisibility(View.INVISIBLE);
@@ -299,16 +365,36 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     public void onClick2(View view)
     {
-        if (isb2 == false)
+        switch (counter)
         {
-            b2.setText("Hide tresholds");
-            linearLayout.setVisibility(View.VISIBLE);
-            isb2 = true;
-        } else
-        {
-            b2.setText("Show tresholds");
-            linearLayout.setVisibility(View.INVISIBLE);
-            isb2 = false;
+            case 2:
+
+                if (isb2 == false)
+                {
+                    b2.setText("Hide tresholds");
+                    linearLayout.setVisibility(View.VISIBLE);
+                    isb2 = true;
+                } else
+                {
+                    b2.setText("Show tresholds");
+                    linearLayout.setVisibility(View.INVISIBLE);
+                    isb2 = false;
+
+                }
+                break;
+            case 3:
+                if (isb2 == false)
+                {
+                    b2.setText("Hide scalars");
+                    linearLayout.setVisibility(View.VISIBLE);
+                    isb2 = true;
+                } else
+                {
+                    b2.setText("Show scalars");
+                    linearLayout.setVisibility(View.INVISIBLE);
+                    isb2 = false;
+
+                }
 
         }
     }

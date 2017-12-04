@@ -2465,7 +2465,7 @@ public class Imgproc {
     //
 
     //javadoc: minAreaRect(points)
-    public static RotatedRect minAreaRect(MatOfPoint2f points)
+    public static RotatedRect minAreaRect(MatOfPoint points)
     {
         Mat points_mat = points;
         RotatedRect retVal = new RotatedRect(minAreaRect_0(points_mat.nativeObj));
@@ -2616,7 +2616,7 @@ public class Imgproc {
     //
 
     //javadoc: fitEllipse(points)
-    public static RotatedRect fitEllipse(MatOfPoint2f points)
+    public static RotatedRect fitEllipse(MatOfPoint points)
     {
         Mat points_mat = points;
         RotatedRect retVal = new RotatedRect(fitEllipse_0(points_mat.nativeObj));
