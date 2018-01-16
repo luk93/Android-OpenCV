@@ -3,7 +3,9 @@ package com.example.lukasz.opencvtest;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
-import android.graphics.Camera;
+import android.graphics.Bitmap;
+import android.media.MediaPlayer;
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -12,14 +14,16 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.FpsMeter;
 import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
 import org.opencv.core.Core;
+import org.opencv.core.CvException;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
@@ -28,8 +32,12 @@ import org.opencv.core.Point;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
+import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,7 +70,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     JavaCameraView javaCameraView;
 
     //Matrixes
-    Mat imageRGBA, imageGray, imageCanny, imageinRange, imageTMP, imageContours;
+    Mat imageRGBA, imageGray, imageCanny, imageinRange, imageTMP, imageContours, imageToBmpTMP;
 
     //Interface
     LinearLayout linearLayout;
@@ -82,6 +90,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     String stream;
 
     Scalar contourColor = new Scalar(255,0,0,255);
+
+    //file parametres
+    String filename = "file";
+    String filepath = "MyAlbum";
+    FileOutputStream out = null;
+    boolean success = false;
+    Bitmap bmp = null;
+
+    MediaPlayer sound1, sound2;
 
     BaseLoaderCallback loaderCallback = new BaseLoaderCallback(this)
     {
@@ -113,6 +130,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         setContentView(R.layout.activity_main);
         javaCameraView = (JavaCameraView) findViewById(R.id.cameraView);
         javaCameraView.setCvCameraViewListener(this);
+
+        sound1 = MediaPlayer.create(getApplicationContext(), R.raw.photo);
+        sound2 = MediaPlayer.create(getApplicationContext(), R.raw.light_on);
 
         //initializing interface elements
         b1 = (Button) findViewById(R.id.button);
@@ -201,12 +221,19 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                                                 }
                                             }
         );
+        if (!isExternalStorageAvailable() || isExternalStorageReadOnly()) {
+            success = false;
+        }
+        else {
+            success = true;
+        }
         javaCameraView.setOnClickListener(new JavaCameraView.OnClickListener()
         {
             @Override
             public void onClick(View v)
             {
-                tvObjectInfo.setText("focusing");//in progress, not ready yet
+
+                savePicture();
             }
         });
     }
@@ -232,6 +259,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         imageinRange.release();
         imageTMP.release();
         imageContours.release();
+        disableSound();
     }
 
     protected void onDestroy()
@@ -279,6 +307,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         imageCanny = new Mat(imageRGBA.size(), CvType.CV_8UC1);
         imageinRange = new Mat(imageRGBA.size(),CvType.CV_8UC1);
         imageTMP = new Mat(imageRGBA.size(),CvType.CV_8UC1);
+        imageToBmpTMP = new Mat(imageRGBA.size(), CvType.CV_8UC4);
     }
 
     @Override
@@ -339,17 +368,17 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                     MatOfPoint matOfPoint = contours.get(i);
                     MatOfPoint2f matOfPoint2f = new MatOfPoint2f(matOfPoint.toArray());
                     minRect[i] = Imgproc.minAreaRect(matOfPoint2f);
-                    Point[] rect_points = new Point[4];
-                    minRect[i].points(rect_points);
+                    Point[] rectPoints = new Point[4];
+                    minRect[i].points(rectPoints);
                     for (int j = 0; j < 4; j++)
                     {
-                        Imgproc.line(imageRGBA, rect_points[j], rect_points[(j + 1) % 4],contourColor);
+                        Imgproc.line(imageRGBA, rectPoints[j], rectPoints[(j + 1) % 4],contourColor);
                     }
                     if(minRect[i].size.height>100 && minRect[i].size.height<600 || minRect[i].size.width>100 && minRect[i].size.width<600)
                     {
                         height[i] = Math.round(minRect[i].size.height);
                         width[i] = Math.round(minRect[i].size.width);
-                        stream = String.valueOf(height[i]) +"x"+ String.valueOf(width[i]);
+                        stream = String.valueOf(i)+": "+String.valueOf(height[i]) +"x"+ String.valueOf(width[i]);
                         Imgproc.putText(imageRGBA,stream, new Point(minRect[i].center.x - minRect[i].size.width/2,
                                                                     minRect[i].center.y - minRect[i].size.height/2),
                                         Core.FONT_ITALIC, 1.0,contourColor);
@@ -467,6 +496,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         javaCameraView.turnOnTheFlash();
         b3.setBackgroundResource(R.drawable.light_on);
         isLight = true;
+        if (sound2.isPlaying())
+            sound2.stop();
+        sound2 = MediaPlayer.create(getApplicationContext(), R.raw.light_on);
+        sound2.start();
     }
 
 
@@ -475,5 +508,86 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         javaCameraView.turnOffTheFlash();
         b3.setBackgroundResource(R.drawable.light_off);
         isLight = false;
+        if (sound2.isPlaying())
+            sound2.stop();
+        sound2 = MediaPlayer.create(getApplicationContext(), R.raw.light_off);
+        sound2.start();
+    }
+    public void savePicture()
+    {
+        try {
+            //testing on RGBA
+            bmp = Bitmap.createBitmap(imageRGBA.cols(), imageRGBA.rows(), Bitmap.Config.ARGB_8888);
+            imageRGBA.copyTo(imageToBmpTMP);
+            Utils.matToBitmap(imageToBmpTMP, bmp);
+
+        } catch (CvException e) {
+            Log.d(TAG, e.getMessage());
+        }
+        out = null;
+        filename = "frame.png";
+        if (success)
+        {
+            File dest = new File(getExternalFilesDir(filepath), filename);
+            try {
+                out = new FileOutputStream(dest);
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.d(TAG, e.getMessage());
+            } finally {
+                try {
+                    if (out != null) {
+                        out.close();
+                        Log.d(TAG, "OK!!");
+                    }
+                } catch (IOException e) {
+                    Log.d(TAG, e.getMessage() + "Error");
+                    e.printStackTrace();
+                }
+            }
+        }
+            toast("Picture Taken!");
+            sound1.start();
+    }
+
+    private void toast(String s)
+    {
+        Toast.makeText(getApplicationContext(), s, Toast.LENGTH_LONG).show();
+    }
+
+    // if USB cable is connected:
+
+    private static boolean isExternalStorageReadOnly() {
+        String extStorageState = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED_READ_ONLY.equals(extStorageState)) {
+            return true;
+        }
+        return false;
+    }
+    private static boolean isExternalStorageAvailable() {
+        String extStorageState = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(extStorageState)) {
+            return true;
+        }
+        return false;
+    }
+    private void disableSound()
+    {
+        if (sound1 != null && sound1.isPlaying())
+        {
+            sound1.stop();
+            sound1.reset();
+            sound1.release();
+            sound1 = null;
+        }
+        if (sound2 != null && sound2.isPlaying())
+        {
+            sound2.stop();
+            sound2.reset();
+            sound2.release();
+            sound2 = null;
+        }
+
     }
 }
