@@ -8,6 +8,7 @@ import android.media.MediaPlayer;
 import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.format.DateFormat;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -39,6 +40,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2
@@ -79,7 +81,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     SeekBar seekBar1, seekBar2;
 
     //variables
-    int counter = 0;
     int frameCounter = 0;
     int tresh1 = 50;
     int tresh2 = 150;
@@ -98,7 +99,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     boolean success = false;
     Bitmap bmp = null;
 
+    Date data = new Date();
+    CharSequence currentDataAndTime;
+
     MediaPlayer sound1, sound2;
+
+    int counter; //testing
 
     BaseLoaderCallback loaderCallback = new BaseLoaderCallback(this)
     {
@@ -515,17 +521,42 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     }
     public void savePicture()
     {
+        data = new Date();
         try {
+            currentDataAndTime = DateFormat.format("yyyy-MM-dd hh:mm:ss", data.getTime());
             //testing on RGBA
             bmp = Bitmap.createBitmap(imageRGBA.cols(), imageRGBA.rows(), Bitmap.Config.ARGB_8888);
-            imageRGBA.copyTo(imageToBmpTMP);
+            switch (counter)
+            {
+                case 0:
+                    imageRGBA.copyTo(imageToBmpTMP);
+                    break;
+                case 1:
+                    imageGray.copyTo(imageToBmpTMP);
+                    break;
+                case 2:
+                    imageCanny.copyTo(imageToBmpTMP);
+                    break;
+                case 3:
+                    imageinRange.copyTo(imageToBmpTMP);
+                    break;
+                case 4:
+                    imageTMP.copyTo(imageToBmpTMP);
+                    break;
+                case 5:
+                    imageRGBA.copyTo(imageToBmpTMP);
+                    break;
+                default:
+                    imageRGBA.copyTo(imageToBmpTMP);
+                    break;
+            }
             Utils.matToBitmap(imageToBmpTMP, bmp);
 
         } catch (CvException e) {
             Log.d(TAG, e.getMessage());
         }
         out = null;
-        filename = "frame.png";
+        filename ="Photo-"+String.valueOf(currentDataAndTime)+".png";
         if (success)
         {
             File dest = new File(getExternalFilesDir(filepath), filename);
